@@ -273,3 +273,20 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    papel: Optional[PapelUsuario] = None
+    orgao_id: Optional[UUID] = None
+    fornecedor_id: Optional[UUID] = None
+
+
+class ItemAtaUpdate(BaseModel):
+    descricao_especificacao: Optional[str] = None
+    unidade_medida: Optional[str] = None
+    marca_modelo: Optional[str] = None
+    valor_unitario: Optional[Decimal] = None
+    quantidade_total_ofertada: Optional[Decimal] = None
+
+
+

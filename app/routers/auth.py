@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from uuid import UUID
 from app.database import get_db
 from app import models, schemas, auth
 
@@ -166,4 +167,112 @@ def register(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Não foi possível salvar o usuário: {str(e)}"
         )
+
+
+@router.put("/users/{user_id}", response_model=schemas.UserResponse, summary="Atualizar dados de um usuário")
+def update_user(
+    user_id: UUID,
+    user_update: schemas.UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.RoleChecker(["ADMIN_GERENCIADOR"]))
+):
+    """
+    Atualiza as informações de um usuário por ID.
+
+    Regras de autorização e validação (Modelo 1):
+    - Apenas administradores (`ADMIN_GERENCIADOR`) podem acessar esta rota.
+    - O administrador só pode editar usuários pertencentes ao seu próprio órgão.
+    - Se o e-mail for alterado, verifica se não está duplicado.
+    - Se a senha for enviada, ela será re-encriptada.
+    """
+    # 1. Buscar usuário que será atualizado
+    user_to_update = db.query(models.Usuario).filter(models.Usuario.id == user_id).first()
+    if not user_to_update:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuário não encontrado."
+        )
+
+    # 2. Impedir que altere usuários de outro órgão
+    if user_to_update.orgao_id and user_to_update.orgao_id != current_user.orgao_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso negado: você só pode atualizar usuários pertencentes ao seu próprio órgão público."
+        )
+
+    # 3. Processar campos enviados
+    if user_update.email is not None and user_update.email != user_to_update.email:
+        # Verificar e-mail duplicado
+        existing_email = db.query(models.Usuario).filter(models.Usuario.email == user_update.email).first()
+        if existing_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Já existe um usuário cadastrado com este e-mail."
+            )
+        user_to_update.email = user_update.email
+
+    if user_update.password is not None:
+        user_to_update.senha_hash = auth.get_password_hash(user_update.password)
+
+    # Se papel, orgao_id ou fornecedor_id forem enviados, re-validar as constraints
+    new_papel = user_update.papel if user_update.papel is not None else user_to_update.papel
+    new_papel_str = new_papel.value if hasattr(new_papel, "value") else new_papel
+
+    new_orgao_id = user_update.orgao_id if user_update.orgao_id is not None else user_to_update.orgao_id
+    new_fornecedor_id = user_update.fornecedor_id if user_update.fornecedor_id is not None else user_to_update.fornecedor_id
+
+    # Se houver mudanças em papel ou vínculos, fazer as validações do modelo
+    if user_update.papel is not None or user_update.orgao_id is not None or user_update.fornecedor_id is not None:
+        if new_papel_str in ["ADMIN_GERENCIADOR", "COMPRADOR"]:
+            if not new_orgao_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="O campo 'orgao_id' é obrigatório para administradores e compradores."
+                )
+            if new_fornecedor_id is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="O campo 'fornecedor_id' deve ser nulo para administradores e compradores."
+                )
+            # Garantir que o novo órgão inserido também seja o do próprio admin
+            if new_orgao_id != current_user.orgao_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Acesso negado: você só pode associar usuários ao seu próprio órgão público."
+                )
+        elif new_papel_str == "FORNECEDOR":
+            if not new_fornecedor_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="O campo 'fornecedor_id' é obrigatório para fornecedores."
+                )
+            if new_orgao_id is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="O campo 'orgao_id' deve ser nulo para fornecedores."
+                )
+            
+            # Verificar se o fornecedor existe no banco
+            supplier = db.query(models.Fornecedor).filter(models.Fornecedor.id == new_fornecedor_id).first()
+            if not supplier:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Fornecedor com ID {new_fornecedor_id} não encontrado."
+                )
+        
+        user_to_update.papel = new_papel_str
+        user_to_update.orgao_id = new_orgao_id
+        user_to_update.fornecedor_id = new_fornecedor_id
+
+    try:
+        db.commit()
+        db.refresh(user_to_update)
+        return user_to_update
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Não foi possível atualizar o usuário: {str(e)}"
+        )
+
 
