@@ -124,18 +124,13 @@ CREATE TABLE "public".grupo_lote
     ata_id               UUID                           NOT NULL,
     numero_grupo         VARCHAR(20),
     descricao            TEXT,
-    orgao_id             UUID,                          -- Órgão participante deste lote (NULL = item isolado/sem participante definido)
-    quantidade_planejada DECIMAL(15, 4),                -- Cota planejada pelo órgão para os itens deste lote
 
     CONSTRAINT grupo_lote_pkey PRIMARY KEY (id),
-    CONSTRAINT grupo_lote_quantidade_check CHECK (quantidade_planejada IS NULL OR quantidade_planejada > 0),
-    CONSTRAINT grupo_lote_ata_id_fkey FOREIGN KEY (ata_id) REFERENCES "public".ata (id) ON DELETE CASCADE,
-    CONSTRAINT grupo_lote_orgao_id_fkey FOREIGN KEY (orgao_id) REFERENCES "public".orgao (id)
+    CONSTRAINT grupo_lote_ata_id_fkey FOREIGN KEY (ata_id) REFERENCES "public".ata (id) ON DELETE CASCADE
 );
 
 -- Índice para buscar grupos por ATA
 CREATE INDEX idx_grupo_lote_ata   ON "public".grupo_lote USING BTREE (ata_id);
-CREATE INDEX idx_grupo_lote_orgao ON "public".grupo_lote USING BTREE (orgao_id);
 
 -- Tabela: Item da ATA
 CREATE TABLE "public".item_ata
@@ -164,6 +159,25 @@ CREATE TABLE "public".item_ata
 CREATE INDEX idx_item_ata_ata ON "public".item_ata USING BTREE (ata_id);
 CREATE INDEX idx_item_ata_fornecedor ON "public".item_ata USING BTREE (fornecedor_id);
 CREATE INDEX idx_item_ata_fts ON "public".item_ata USING GIN (to_tsvector('portuguese', descricao_especificacao));
+
+-- Tabela: Órgão Participante por Item da ATA
+CREATE TABLE "public".item_ata_participante
+(
+    id                   UUID DEFAULT gen_random_uuid() NOT NULL,
+    item_ata_id          UUID                           NOT NULL,
+    orgao_id             UUID                           NOT NULL,
+    quantidade_planejada DECIMAL(15, 4)                 NOT NULL,
+
+    CONSTRAINT item_ata_participante_pkey PRIMARY KEY (id),
+    CONSTRAINT item_ata_participante_quantidade_check CHECK (quantidade_planejada > 0),
+    CONSTRAINT item_ata_participante_item_ata_id_fkey FOREIGN KEY (item_ata_id) REFERENCES "public".item_ata (id) ON DELETE CASCADE,
+    CONSTRAINT item_ata_participante_orgao_id_fkey FOREIGN KEY (orgao_id) REFERENCES "public".orgao (id),
+    CONSTRAINT item_ata_participante_item_ata_id_orgao_id_key UNIQUE (item_ata_id, orgao_id)
+);
+
+-- Índices para Órgão Participante por Item
+CREATE INDEX idx_item_ata_participante_item ON "public".item_ata_participante USING BTREE (item_ata_id);
+CREATE INDEX idx_item_ata_participante_orgao ON "public".item_ata_participante USING BTREE (orgao_id);
 
 -- Tabela: Regra de Limite Carona
 CREATE TABLE "public".regra_limite_carona

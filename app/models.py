@@ -85,13 +85,10 @@ class GrupoLote(Base):
     ata_id               = Column(UUID(as_uuid=True), ForeignKey("ata.id", ondelete="CASCADE"), nullable=False)
     numero_grupo         = Column(String(20))
     descricao            = Column(Text)
-    orgao_id             = Column(UUID(as_uuid=True), ForeignKey("orgao.id"), nullable=True)
-    quantidade_planejada = Column(Numeric(15, 4), nullable=True)
 
     # Relationships
     ata   = relationship("Ata", back_populates="grupos")
     items = relationship("ItemAta", back_populates="grupo")
-    orgao = relationship("Orgao")
 
 
 # Model: Item ATA
@@ -115,6 +112,21 @@ class ItemAta(Base):
     grupo = relationship("GrupoLote", back_populates="items")
     fornecedor = relationship("Fornecedor", back_populates="items")
     itens_pedido = relationship("ItemPedido", back_populates="item_ata")
+    participantes = relationship("ItemAtaParticipante", back_populates="item_ata", cascade="all, delete-orphan")
+
+
+# Model: Item Ata Participante
+class ItemAtaParticipante(Base):
+    __tablename__ = "item_ata_participante"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    item_ata_id = Column(UUID(as_uuid=True), ForeignKey("item_ata.id", ondelete="CASCADE"), nullable=False)
+    orgao_id = Column(UUID(as_uuid=True), ForeignKey("orgao.id"), nullable=False)
+    quantidade_planejada = Column(Numeric(15, 4), nullable=False)
+
+    # Relationships
+    item_ata = relationship("ItemAta", back_populates="participantes")
+    orgao = relationship("Orgao")
 
 
 # Model: Regra Limite Carona

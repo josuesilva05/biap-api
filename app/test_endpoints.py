@@ -203,9 +203,7 @@ def main():
         "grupos": [
             {
                 "numero_grupo": "T01",
-                "descricao": "Grupo de Teste — Participante: Sec. Saude SP",
-                "orgao_id": SAUDE_SP_ID,  # participante oficial
-                "quantidade_planejada": 100.0  # qtd_total_ofertada = 100
+                "descricao": "Grupo de Teste — Participante: Sec. Saude SP"
             }
         ],
         "items": [
@@ -215,7 +213,13 @@ def main():
                 "numero_item": "T-01",
                 "descricao_especificacao": "Item de Teste para Validacao de Regras de Carona e Participante",
                 "unidade_medida": "UN",
-                "valor_unitario": 100.00
+                "valor_unitario": 100.00,
+                "participantes": [
+                    {
+                        "orgao_id": SAUDE_SP_ID,
+                        "quantidade_planejada": 100.0
+                    }
+                ]
             }
         ],
         "regras_carona": [
