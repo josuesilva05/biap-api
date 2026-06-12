@@ -127,20 +127,20 @@ def create_order(
             detail=f"Ata com ID {order_in.ata_id} não encontrada."
         )
 
-    # 3. Determinar tipo_adesao automaticamente via grupo_lote.orgao_id
+    # 3. Determinar tipo_adesao automaticamente via item_ata_participante
     # Um pedido é DIRETA somente se o órgão comprador for o participante oficial
-    # registrado em TODOS os grupos dos itens solicitados.
-    # Itens sem grupo são sempre CARONA.
+    # registrado na tabela item_ata_participante para TODOS os itens solicitados.
     resolved_tipo_adesao = schemas.TipoAdesao.DIRETA
     for item_in in order_in.itens:
-        item_check = (
-            db.query(models.ItemAta)
-            .options(joinedload(models.ItemAta.grupo))
-            .filter(models.ItemAta.id == item_in.item_ata_id)
+        is_participant = (
+            db.query(models.ItemAtaParticipante)
+            .filter(
+                models.ItemAtaParticipante.item_ata_id == item_in.item_ata_id,
+                models.ItemAtaParticipante.orgao_id == order_in.orgao_comprador_id
+            )
             .first()
         )
-        grupo = item_check.grupo if item_check else None
-        if not grupo or grupo.orgao_id != order_in.orgao_comprador_id:
+        if not is_participant:
             resolved_tipo_adesao = schemas.TipoAdesao.CARONA
             break
 
@@ -213,14 +213,17 @@ def create_order(
             )
 
         # B. Validação de limite individual do PARTICIPANTE (pedido DIRETA)
-        # A cota do órgão está em grupo_lote.quantidade_planejada.
+        # A cota do órgão está em item_ata_participante.quantidade_planejada.
         if resolved_tipo_adesao == schemas.TipoAdesao.DIRETA:
-            # Carrega o grupo via query separada (FOR UPDATE não suporta LEFT OUTER JOIN)
-            grupo = (
-                db.query(models.GrupoLote).filter(models.GrupoLote.id == item_ata.grupo_id).first()
-                if item_ata.grupo_id else None
+            participante = (
+                db.query(models.ItemAtaParticipante)
+                .filter(
+                    models.ItemAtaParticipante.item_ata_id == item_ata.id,
+                    models.ItemAtaParticipante.orgao_id == order_in.orgao_comprador_id
+                )
+                .first()
             )
-            if grupo and grupo.quantidade_planejada:
+            if participante:
                 # Soma de tudo que este órgão já pediu em modo DIRETA para este item
                 total_ja_pedido_direta = (
                     db.query(func.coalesce(func.sum(models.ItemPedido.quantidade_solicitada), 0))
@@ -238,14 +241,14 @@ def create_order(
                     .scalar()
                 )
 
-                if total_ja_pedido_direta + item_in.quantidade_solicitada > grupo.quantidade_planejada:
+                if total_ja_pedido_direta + item_in.quantidade_solicitada > participante.quantidade_planejada:
                     db.rollback()
-                    cota_restante = grupo.quantidade_planejada - total_ja_pedido_direta
+                    cota_restante = participante.quantidade_planejada - total_ja_pedido_direta
                     raise HTTPException(
                         status_code=400,
                         detail=(
                             f"Limite de cota do participante atingido para o item {item_ata.numero_item}: "
-                            f"Sua cota planejada nesta ATA é de {grupo.quantidade_planejada} unidades. "
+                            f"Sua cota planejada nesta ATA é de {participante.quantidade_planejada} unidades. "
                             f"Já solicitado: {total_ja_pedido_direta}. "
                             f"Cota restante disponível: {cota_restante}. "
                             f"Quantidade solicitada: {item_in.quantidade_solicitada}."

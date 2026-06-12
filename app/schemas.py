@@ -64,12 +64,22 @@ class GrupoLoteResponse(BaseModel):
     id: UUID
     numero_grupo: Optional[str] = None
     descricao: Optional[str] = None
-    orgao_id: Optional[UUID] = None
-    quantidade_planejada: Optional[Decimal] = None
     model_config = ConfigDict(from_attributes=True)
 
 
 # ITEM ATA SCHEMAS
+class ItemAtaParticipanteCreateNested(BaseModel):
+    orgao_id: UUID
+    quantidade_planejada: Decimal
+
+class ItemAtaParticipanteResponse(BaseModel):
+    id: UUID
+    item_ata_id: UUID
+    orgao_id: UUID
+    quantidade_planejada: Decimal
+    orgao: Optional[OrgaoResponse] = None
+    model_config = ConfigDict(from_attributes=True)
+
 class ItemAtaResponse(BaseModel):
     id: UUID
     ata_id: UUID
@@ -81,6 +91,7 @@ class ItemAtaResponse(BaseModel):
     marca_modelo: Optional[str] = None
     valor_unitario: Decimal
     quantidade_total_ofertada: Decimal
+    participantes: List[ItemAtaParticipanteResponse] = []
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -190,16 +201,12 @@ class ItemAtaCreateNested(BaseModel):
     unidade_medida: Optional[str] = None
     marca_modelo: Optional[str] = None
     valor_unitario: Decimal
-    # Opcional: se o item estiver vinculado a um grupo com participantes,
-    # a quantidade é derivada automaticamente como SUM(quantidade_planejada) do grupo.
-    # Obrigatório apenas para itens sem grupo.
     quantidade_total_ofertada: Optional[Decimal] = None
+    participantes: List[ItemAtaParticipanteCreateNested] = []
 
 class GrupoLoteCreateNested(BaseModel):
     numero_grupo: str
     descricao: Optional[str] = None
-    orgao_id: Optional[UUID] = None           # Órgão participante deste lote
-    quantidade_planejada: Optional[Decimal] = None  # Cota planejada pelo órgão
 
 class RegraLimiteCaronaCreateNested(BaseModel):
     percentual_maximo_do_saldo: Decimal
@@ -297,6 +304,43 @@ class ItemAtaUpdate(BaseModel):
     marca_modelo: Optional[str] = None
     valor_unitario: Optional[Decimal] = None
     quantidade_total_ofertada: Optional[Decimal] = None
+
+
+# ATA MONITORING SCHEMAS
+class ItemAtaParticipanteMonitorResponse(BaseModel):
+    orgao_id: UUID
+    nome_orgao: str
+    cnpj_orgao: str
+    quantidade_planejada: Decimal
+    quantidade_consumida: Decimal
+
+class ItemAtaMonitorResponse(BaseModel):
+    id: UUID
+    numero_item: Optional[str] = None
+    descricao_especificacao: str
+    unidade_medida: Optional[str] = None
+    marca_modelo: Optional[str] = None
+    valor_unitario: Decimal
+    fornecedor_razao_social: str
+    quantidade_total_ofertada: Decimal
+    quantidade_consumida: Decimal
+    quantidade_saldo_disponivel: Decimal
+    quantidade_consumida_participantes: Decimal
+    quantidade_consumida_caronas: Decimal
+    participantes: List[ItemAtaParticipanteMonitorResponse] = []
+
+class AtaMonitorResponse(BaseModel):
+    id: UUID
+    numero_ata: str
+    processo_administrativo: Optional[str] = None
+    numero_pregao: Optional[str] = None
+    data_assinatura: Optional[date] = None
+    data_publicacao: Optional[date] = None
+    vigencia_meses: int
+    valor_total_global: Optional[Decimal] = None
+    orgao_gerenciador_nome: str
+    orgao_gerenciador_cnpj: str
+    items: List[ItemAtaMonitorResponse] = []
 
 
 
