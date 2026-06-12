@@ -62,7 +62,8 @@ def get_supplier_items(
 ):
     """Lista todos os itens ganhos por um fornecedor específico, incluindo o saldo físico disponível."""
     # Se for papel FORNECEDOR, ele só pode acessar os próprios itens
-    if current_user.papel.value == "FORNECEDOR" and current_user.fornecedor_id != supplier_id:
+    user_role = current_user.papel.value if hasattr(current_user.papel, "value") else current_user.papel
+    if user_role == "FORNECEDOR" and current_user.fornecedor_id != supplier_id:
         raise HTTPException(
             status_code=403,
             detail="Acesso negado: você só pode consultar os itens da sua própria empresa."
@@ -102,7 +103,8 @@ def get_supplier_orders(
 ):
     """Central de Notificações do Fornecedor: Lista todos os pedidos que contêm itens deste fornecedor."""
     # Se for papel FORNECEDOR, ele só pode acessar os próprios pedidos
-    if current_user.papel.value == "FORNECEDOR" and current_user.fornecedor_id != supplier_id:
+    user_role = current_user.papel.value if hasattr(current_user.papel, "value") else current_user.papel
+    if user_role == "FORNECEDOR" and current_user.fornecedor_id != supplier_id:
         raise HTTPException(
             status_code=403,
             detail="Acesso negado: você só pode consultar pedidos direcionados à sua própria empresa."

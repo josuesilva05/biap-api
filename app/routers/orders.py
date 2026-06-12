@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload, raiseload
+from sqlalchemy import func, text
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime, timezone
@@ -100,6 +100,8 @@ def create_order(
     - Verificação de existência do Órgão Comprador e da ATA.
     - Bloqueio pessimista de concorrência nos itens da ATA solicitados (via `FOR UPDATE`).
     - Validação de saldo físico disponível (quantidade solicitada não pode exceder o saldo atual).
+    - Determinação automática do tipo de adesão (DIRETA ou CARONA) via consulta
+      à tabela `item_ata_participante` — o comprador não pode auto-declarar seu tipo.
     - Validação de limite legal da modalidade CARONA (não permite ultrapassar o percentual máximo configurado na ATA).
     """
     # Validar se o comprador autenticado é do mesmo órgão comprador solicitado
@@ -125,32 +127,53 @@ def create_order(
             detail=f"Ata com ID {order_in.ata_id} não encontrada."
         )
 
+    # 3. Determinar tipo_adesao automaticamente via grupo_lote.orgao_id
+    # Um pedido é DIRETA somente se o órgão comprador for o participante oficial
+    # registrado em TODOS os grupos dos itens solicitados.
+    # Itens sem grupo são sempre CARONA.
+    resolved_tipo_adesao = schemas.TipoAdesao.DIRETA
+    for item_in in order_in.itens:
+        item_check = (
+            db.query(models.ItemAta)
+            .options(joinedload(models.ItemAta.grupo))
+            .filter(models.ItemAta.id == item_in.item_ata_id)
+            .first()
+        )
+        grupo = item_check.grupo if item_check else None
+        if not grupo or grupo.orgao_id != order_in.orgao_comprador_id:
+            resolved_tipo_adesao = schemas.TipoAdesao.CARONA
+            break
+
     # Begin transaction block via DB Session
     new_order = models.Pedido(
         orgao_comprador_id=order_in.orgao_comprador_id,
         ata_id=order_in.ata_id,
         data_pedido=datetime.now(timezone.utc),
-        tipo_adesao=order_in.tipo_adesao.value,
+        tipo_adesao=resolved_tipo_adesao.value,
         status=schemas.StatusPedido.PENDENTE.value
     )
-    
+
     db.add(new_order)
     db.flush() # Flush to populate new_order.id
 
-    # 3. Create items with row locks and business validations
+    # 4. Create items with row locks and business validations
     for item_in in order_in.itens:
         # Validate that the item belongs to the selected ATA AND lock it
-        # utilizing with_for_update() to prevent race conditions during checkout
+        # utilizing raw SQL FOR UPDATE to lock the row and prevent race conditions during checkout
+        # without triggering SQLAlchemy join compilation issues on with_for_update()
+        db.execute(
+            text("SELECT 1 FROM item_ata WHERE id = :id FOR UPDATE"),
+            {"id": item_in.item_ata_id}
+        )
         item_ata = (
             db.query(models.ItemAta)
             .filter(
                 models.ItemAta.id == item_in.item_ata_id,
                 models.ItemAta.ata_id == order_in.ata_id
             )
-            .with_for_update()
             .first()
         )
-        
+
         if not item_ata:
             db.rollback()
             raise HTTPException(
@@ -189,25 +212,100 @@ def create_order(
                 )
             )
 
-        # B. Carona legal limit check (Auto limit block)
-        if order_in.tipo_adesao == schemas.TipoAdesao.CARONA:
-            # Check the carona rules configured for this ATA
-            regra = db.query(models.RegraLimiteCarona).filter(models.RegraLimiteCarona.ata_id == order_in.ata_id).first()
-            if regra:
-                limit_percent = regra.percentual_maximo_do_saldo
-                limite_carona_item = item_ata.quantidade_total_ofertada * (limit_percent / 100)
+        # B. Validação de limite individual do PARTICIPANTE (pedido DIRETA)
+        # A cota do órgão está em grupo_lote.quantidade_planejada.
+        if resolved_tipo_adesao == schemas.TipoAdesao.DIRETA:
+            # Carrega o grupo via query separada (FOR UPDATE não suporta LEFT OUTER JOIN)
+            grupo = (
+                db.query(models.GrupoLote).filter(models.GrupoLote.id == item_ata.grupo_id).first()
+                if item_ata.grupo_id else None
+            )
+            if grupo and grupo.quantidade_planejada:
+                # Soma de tudo que este órgão já pediu em modo DIRETA para este item
+                total_ja_pedido_direta = (
+                    db.query(func.coalesce(func.sum(models.ItemPedido.quantidade_solicitada), 0))
+                    .join(models.Pedido, models.Pedido.id == models.ItemPedido.pedido_id)
+                    .filter(
+                        models.ItemPedido.item_ata_id == item_ata.id,
+                        models.Pedido.orgao_comprador_id == order_in.orgao_comprador_id,
+                        models.Pedido.tipo_adesao == schemas.TipoAdesao.DIRETA.value,
+                        models.Pedido.status.in_([
+                            schemas.StatusPedido.PENDENTE.value,
+                            schemas.StatusPedido.AUTORIZADO.value,
+                            schemas.StatusPedido.EMITIDO.value,
+                        ])
+                    )
+                    .scalar()
+                )
 
-                if item_in.quantidade_solicitada > limite_carona_item:
+                if total_ja_pedido_direta + item_in.quantidade_solicitada > grupo.quantidade_planejada:
                     db.rollback()
+                    cota_restante = grupo.quantidade_planejada - total_ja_pedido_direta
                     raise HTTPException(
                         status_code=400,
                         detail=(
-                            f"Trava de Carona Ativada: A quantidade solicitada ({item_in.quantidade_solicitada}) "
-                            f"para o item {item_ata.numero_item} excede o limite legal máximo permitido para adesões externas "
-                            f"({limite_carona_item} correspondente a {limit_percent}% da quantidade ofertada)."
+                            f"Limite de cota do participante atingido para o item {item_ata.numero_item}: "
+                            f"Sua cota planejada nesta ATA é de {grupo.quantidade_planejada} unidades. "
+                            f"Já solicitado: {total_ja_pedido_direta}. "
+                            f"Cota restante disponível: {cota_restante}. "
+                            f"Quantidade solicitada: {item_in.quantidade_solicitada}."
                         )
                     )
-            
+
+        # B. Carona legal limit check — DUAS TRAVAS INDEPENDENTES
+        if resolved_tipo_adesao == schemas.TipoAdesao.CARONA:
+
+            # === TRAVA 1: Limite individual por pedido de carona (50% da qtd inicial) ===
+            # Nenhum único órgão carona pode solicitar mais que 50% da quantidade inicial do item.
+            limite_individual_carona = item_ata.quantidade_total_ofertada * 50 / 100
+
+            if item_in.quantidade_solicitada > limite_individual_carona:
+                db.rollback()
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Trava de Carona Ativada para o item {item_ata.numero_item}: "
+                        f"Um único órgão carona não pode solicitar mais que 50% da quantidade inicial "
+                        f"({limite_individual_carona} unidades). "
+                        f"Quantidade solicitada: {item_in.quantidade_solicitada}."
+                    )
+                )
+
+            # === TRAVA 2: Limite acumulado global de caronas (200% = 2× a qtd inicial) ===
+            # A soma de TODOS os pedidos de carona (de todos os órgãos) não pode ultrapassar 2× a quantidade inicial.
+            # Inclui status PENDENTE para evitar que pedidos simultâneos estourem o teto antes da aprovação.
+            total_ja_consumido_caronas = (
+                db.query(func.coalesce(func.sum(models.ItemPedido.quantidade_solicitada), 0))
+                .join(models.Pedido, models.Pedido.id == models.ItemPedido.pedido_id)
+                .filter(
+                    models.ItemPedido.item_ata_id == item_ata.id,
+                    models.Pedido.tipo_adesao == schemas.TipoAdesao.CARONA.value,
+                    models.Pedido.status.in_([
+                        schemas.StatusPedido.PENDENTE.value,
+                        schemas.StatusPedido.AUTORIZADO.value,
+                        schemas.StatusPedido.EMITIDO.value,
+                    ])
+                )
+                .scalar()
+            )
+
+            limite_global_caronas = item_ata.quantidade_total_ofertada * 2
+
+            if total_ja_consumido_caronas + item_in.quantidade_solicitada > limite_global_caronas:
+                db.rollback()
+                saldo_carona_restante = limite_global_caronas - total_ja_consumido_caronas
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Trava de Carona Ativada para o item {item_ata.numero_item}: "
+                        f"O teto global de caronas (200% = {limite_global_caronas} unidades = 2× a quantidade inicial) "
+                        f"foi atingido. "
+                        f"Total já consumido por caronas: {total_ja_consumido_caronas}. "
+                        f"Saldo de carona disponível: {saldo_carona_restante}. "
+                        f"Quantidade solicitada: {item_in.quantidade_solicitada}."
+                    )
+                )
+
         new_item_pedido = models.ItemPedido(
             pedido_id=new_order.id,
             item_ata_id=item_in.item_ata_id,
@@ -280,20 +378,17 @@ def update_order_status(
         order.data_autorizacao = datetime.now(timezone.utc)
         
     elif status_update.status == schemas.StatusPedido.AUTORIZADO:
-        if not status_update.autorizado_por_usuario_id:
-            raise HTTPException(
-                status_code=400,
-                detail="O usuário autorizador é obrigatório para aprovar o pedido."
-            )
+        # Se não fornecido no corpo, assume o ID do usuário autenticado atual
+        autorizador_id = status_update.autorizado_por_usuario_id or current_user.id
         # Verify that the user exists and has permission
-        user = db.query(models.Usuario).filter(models.Usuario.id == status_update.autorizado_por_usuario_id).first()
+        user = db.query(models.Usuario).filter(models.Usuario.id == autorizador_id).first()
         user_role = user.papel.value if user and hasattr(user.papel, "value") else (user.papel if user else None)
         if not user or user_role not in ["ADMIN_GERENCIADOR", "COMPRADOR"]:
             raise HTTPException(
                 status_code=400,
                 detail="Usuário autorizador inválido ou sem permissões de gestor."
             )
-        order.autorizado_por_usuario_id = status_update.autorizado_por_usuario_id
+        order.autorizado_por_usuario_id = autorizador_id
         order.data_autorizacao = datetime.now(timezone.utc)
         order.justificativa_rejeicao = None
         

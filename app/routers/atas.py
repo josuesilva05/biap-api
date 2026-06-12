@@ -126,11 +126,13 @@ def create_ata(
         new_group = models.GrupoLote(
             ata_id=new_ata.id,
             numero_grupo=group_in.numero_grupo,
-            descricao=group_in.descricao
+            descricao=group_in.descricao,
+            orgao_id=group_in.orgao_id,
+            quantidade_planejada=group_in.quantidade_planejada
         )
         db.add(new_group)
         db.flush()
-        group_map[group_in.numero_grupo] = new_group.id
+        group_map[group_in.numero_grupo] = new_group
 
     # Create carona rules
     for rule_in in ata_in.regras_carona:
@@ -143,10 +145,11 @@ def create_ata(
 
     # Create items
     for item_in in ata_in.items:
-        # Resolve group_id
-        grupo_id = None
+        # Resolve group
+        grupo = None
         if item_in.grupo_numero and item_in.grupo_numero in group_map:
-            grupo_id = group_map[item_in.grupo_numero]
+            grupo = group_map[item_in.grupo_numero]
+        grupo_id = grupo.id if grupo else None
 
         # Validate supplier
         supplier = db.query(models.Fornecedor).filter(models.Fornecedor.id == item_in.fornecedor_id).first()
@@ -155,6 +158,21 @@ def create_ata(
             raise HTTPException(
                 status_code=400,
                 detail=f"Fornecedor com ID {item_in.fornecedor_id} não encontrado."
+            )
+
+        # quantidade_total_ofertada: derivada do grupo (se tiver órgão e cota) ou informada manualmente
+        if grupo and grupo.quantidade_planejada:
+            quantidade_total = grupo.quantidade_planejada
+        elif item_in.quantidade_total_ofertada and item_in.quantidade_total_ofertada > 0:
+            quantidade_total = item_in.quantidade_total_ofertada
+        else:
+            db.rollback()
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Item {item_in.numero_item}: informe 'quantidade_total_ofertada' "
+                    f"ou vincule o item a um grupo que tenha 'quantidade_planejada'."
+                )
             )
 
         new_item = models.ItemAta(
@@ -166,9 +184,10 @@ def create_ata(
             unidade_medida=item_in.unidade_medida,
             marca_modelo=item_in.marca_modelo,
             valor_unitario=item_in.valor_unitario,
-            quantidade_total_ofertada=item_in.quantidade_total_ofertada
+            quantidade_total_ofertada=quantidade_total
         )
         db.add(new_item)
+        db.flush()
 
     try:
         db.commit()

@@ -120,17 +120,22 @@ CREATE INDEX idx_ata_orgao_gerenciador ON "public".ata USING BTREE (orgao_gerenc
 -- Tabela: Grupo de Lote
 CREATE TABLE "public".grupo_lote
 (
-    id           UUID DEFAULT gen_random_uuid() NOT NULL,
-    ata_id       UUID                           NOT NULL,
-    numero_grupo VARCHAR(20),
-    descricao    TEXT,
+    id                   UUID DEFAULT gen_random_uuid() NOT NULL,
+    ata_id               UUID                           NOT NULL,
+    numero_grupo         VARCHAR(20),
+    descricao            TEXT,
+    orgao_id             UUID,                          -- Órgão participante deste lote (NULL = item isolado/sem participante definido)
+    quantidade_planejada DECIMAL(15, 4),                -- Cota planejada pelo órgão para os itens deste lote
 
     CONSTRAINT grupo_lote_pkey PRIMARY KEY (id),
-    CONSTRAINT grupo_lote_ata_id_fkey FOREIGN KEY (ata_id) REFERENCES "public".ata (id) ON DELETE CASCADE
+    CONSTRAINT grupo_lote_quantidade_check CHECK (quantidade_planejada IS NULL OR quantidade_planejada > 0),
+    CONSTRAINT grupo_lote_ata_id_fkey FOREIGN KEY (ata_id) REFERENCES "public".ata (id) ON DELETE CASCADE,
+    CONSTRAINT grupo_lote_orgao_id_fkey FOREIGN KEY (orgao_id) REFERENCES "public".orgao (id)
 );
 
 -- Índice para buscar grupos por ATA
-CREATE INDEX idx_grupo_lote_ata ON "public".grupo_lote USING BTREE (ata_id);
+CREATE INDEX idx_grupo_lote_ata   ON "public".grupo_lote USING BTREE (ata_id);
+CREATE INDEX idx_grupo_lote_orgao ON "public".grupo_lote USING BTREE (orgao_id);
 
 -- Tabela: Item da ATA
 CREATE TABLE "public".item_ata
@@ -169,7 +174,7 @@ CREATE TABLE "public".regra_limite_carona
 
     CONSTRAINT regra_limite_carona_pkey PRIMARY KEY (id),
     CONSTRAINT regra_limite_carona_percentual_maximo_do_saldo_check CHECK (
-        percentual_maximo_do_saldo >= 0 AND percentual_maximo_do_saldo <= 100
+        percentual_maximo_do_saldo > 0 AND percentual_maximo_do_saldo <= 200
         ),
     CONSTRAINT regra_limite_carona_ata_id_fkey FOREIGN KEY (ata_id) REFERENCES "public".ata (id) ON DELETE CASCADE
 );
@@ -234,19 +239,40 @@ CREATE INDEX idx_item_pedido_item ON "public".item_pedido USING BTREE (item_ata_
 -- 5. VIEWS
 -- ============================================================================
 
--- View: Saldo Disponível por Item da ATA
+-- View: Saldo Disponível por Item da ATA (com divisão Participante vs. Carona)
 CREATE
 OR REPLACE VIEW "public".vw_saldo_item_ata AS
-SELECT ia.id,
-       ia.ata_id,
-       ia.fornecedor_id,
-       ia.quantidade_total_ofertada,
-       COALESCE(SUM(ip.quantidade_solicitada), 0)                                  AS quantidade_consumida,
-       (ia.quantidade_total_ofertada - COALESCE(SUM(ip.quantidade_solicitada), 0)) AS quantidade_saldo_disponivel
+SELECT
+    ia.id,
+    ia.ata_id,
+    ia.fornecedor_id,
+    ia.quantidade_total_ofertada,
+
+    -- Consumo total de pedidos DIRETA (participantes oficiais)
+    COALESCE(SUM(ip.quantidade_solicitada) FILTER (
+        WHERE p.tipo_adesao = 'DIRETA'::"public".tipo_adesao
+    ), 0) AS quantidade_consumida_participantes,
+
+    -- Consumo total de pedidos CARONA (órgãos externos)
+    COALESCE(SUM(ip.quantidade_solicitada) FILTER (
+        WHERE p.tipo_adesao = 'CARONA'::"public".tipo_adesao
+    ), 0) AS quantidade_consumida_caronas,
+
+    -- Consumo total geral (DIRETA + CARONA)
+    COALESCE(SUM(ip.quantidade_solicitada), 0) AS quantidade_consumida,
+
+    -- Saldo físico restante
+    (ia.quantidade_total_ofertada - COALESCE(SUM(ip.quantidade_solicitada), 0)) AS quantidade_saldo_disponivel
+
 FROM item_ata ia
-         LEFT JOIN item_pedido ip ON (ip.item_ata_id = ia.id)
-         LEFT JOIN pedido p ON (p.id = ip.pedido_id AND p.status = ANY (ARRAY['AUTORIZADO'::"public".status_pedido,
-                                                                        'EMITIDO'::"public".status_pedido]))
+    LEFT JOIN item_pedido ip ON (ip.item_ata_id = ia.id)
+    LEFT JOIN pedido p ON (
+        p.id = ip.pedido_id
+        AND p.status = ANY (ARRAY[
+            'AUTORIZADO'::"public".status_pedido,
+            'EMITIDO'::"public".status_pedido
+        ])
+    )
 GROUP BY ia.id, ia.ata_id, ia.fornecedor_id, ia.quantidade_total_ofertada;
 
 -- ============================================================================

@@ -64,6 +64,8 @@ class GrupoLoteResponse(BaseModel):
     id: UUID
     numero_grupo: Optional[str] = None
     descricao: Optional[str] = None
+    orgao_id: Optional[UUID] = None
+    quantidade_planejada: Optional[Decimal] = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -137,7 +139,8 @@ class ItemPedidoResponse(BaseModel):
 class PedidoCreate(BaseModel):
     orgao_comprador_id: UUID
     ata_id: UUID
-    tipo_adesao: TipoAdesao
+    # tipo_adesao removido: determinado automaticamente pelo backend
+    # consultando item_ata_participante para cada item do pedido
     itens: List[ItemPedidoCreate]
 
 class PedidoResponse(BaseModel):
@@ -164,6 +167,8 @@ class VwSaldoItemAtaResponse(BaseModel):
     ata_id: UUID
     fornecedor_id: UUID
     quantidade_total_ofertada: Decimal
+    quantidade_consumida_participantes: Decimal
+    quantidade_consumida_caronas: Decimal
     quantidade_consumida: Decimal
     quantidade_saldo_disponivel: Decimal
     model_config = ConfigDict(from_attributes=True)
@@ -185,11 +190,16 @@ class ItemAtaCreateNested(BaseModel):
     unidade_medida: Optional[str] = None
     marca_modelo: Optional[str] = None
     valor_unitario: Decimal
-    quantidade_total_ofertada: Decimal
+    # Opcional: se o item estiver vinculado a um grupo com participantes,
+    # a quantidade é derivada automaticamente como SUM(quantidade_planejada) do grupo.
+    # Obrigatório apenas para itens sem grupo.
+    quantidade_total_ofertada: Optional[Decimal] = None
 
 class GrupoLoteCreateNested(BaseModel):
     numero_grupo: str
     descricao: Optional[str] = None
+    orgao_id: Optional[UUID] = None           # Órgão participante deste lote
+    quantidade_planejada: Optional[Decimal] = None  # Cota planejada pelo órgão
 
 class RegraLimiteCaronaCreateNested(BaseModel):
     percentual_maximo_do_saldo: Decimal

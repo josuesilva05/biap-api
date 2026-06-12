@@ -81,14 +81,17 @@ class Ata(Base):
 class GrupoLote(Base):
     __tablename__ = "grupo_lote"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    ata_id = Column(UUID(as_uuid=True), ForeignKey("ata.id", ondelete="CASCADE"), nullable=False)
-    numero_grupo = Column(String(20))
-    descricao = Column(Text)
+    id                   = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ata_id               = Column(UUID(as_uuid=True), ForeignKey("ata.id", ondelete="CASCADE"), nullable=False)
+    numero_grupo         = Column(String(20))
+    descricao            = Column(Text)
+    orgao_id             = Column(UUID(as_uuid=True), ForeignKey("orgao.id"), nullable=True)
+    quantidade_planejada = Column(Numeric(15, 4), nullable=True)
 
     # Relationships
-    ata = relationship("Ata", back_populates="grupos")
+    ata   = relationship("Ata", back_populates="grupos")
     items = relationship("ItemAta", back_populates="grupo")
+    orgao = relationship("Orgao")
 
 
 # Model: Item ATA
@@ -172,5 +175,7 @@ class VwSaldoItemAta(Base):
     ata_id = Column(UUID(as_uuid=True))
     fornecedor_id = Column(UUID(as_uuid=True))
     quantidade_total_ofertada = Column(Numeric(15, 4))
+    quantidade_consumida_participantes = Column(Numeric(15, 4))
+    quantidade_consumida_caronas = Column(Numeric(15, 4))
     quantidade_consumida = Column(Numeric(15, 4))
     quantidade_saldo_disponivel = Column(Numeric(15, 4))

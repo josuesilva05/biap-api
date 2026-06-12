@@ -276,3 +276,13 @@ def update_user(
         )
 
 
+@router.get("/me", response_model=schemas.UserResponse, summary="Obter dados do usuário logado")
+def get_me(
+    current_user: models.Usuario = Depends(auth.get_current_user)
+):
+    """
+    Retorna os detalhes do usuário atualmente autenticado com base no token JWT enviado no cabeçalho Authorization.
+    """
+    return current_user
+
+
