@@ -62,3 +62,7 @@ ALTER TABLE regra_limite_carona
 DROP TABLE IF EXISTS item_ata_participante CASCADE;
 DROP TABLE IF EXISTS grupo_lote_participante CASCADE;
 
+-- 5. Adicionar coluna url_imagem à tabela item_ata
+ALTER TABLE item_ata
+    ADD COLUMN IF NOT EXISTS url_imagem VARCHAR(255);
+

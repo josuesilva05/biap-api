@@ -79,6 +79,7 @@ class ItemAtaResponse(BaseModel):
     descricao_especificacao: str
     unidade_medida: Optional[str] = None
     marca_modelo: Optional[str] = None
+    url_imagem: Optional[str] = None
     valor_unitario: Decimal
     quantidade_total_ofertada: Decimal
     model_config = ConfigDict(from_attributes=True)
@@ -189,6 +190,7 @@ class ItemAtaCreateNested(BaseModel):
     descricao_especificacao: str
     unidade_medida: Optional[str] = None
     marca_modelo: Optional[str] = None
+    url_imagem: Optional[str] = None
     valor_unitario: Decimal
     # Opcional: se o item estiver vinculado a um grupo com participantes,
     # a quantidade é derivada automaticamente como SUM(quantidade_planejada) do grupo.
@@ -227,6 +229,7 @@ class ItemSearchResponse(BaseModel):
     descricao_especificacao: str
     unidade_medida: Optional[str] = None
     marca_modelo: Optional[str] = None
+    url_imagem: Optional[str] = None
     valor_unitario: Decimal
     
     # Balances
@@ -295,6 +298,7 @@ class ItemAtaUpdate(BaseModel):
     descricao_especificacao: Optional[str] = None
     unidade_medida: Optional[str] = None
     marca_modelo: Optional[str] = None
+    url_imagem: Optional[str] = None
     valor_unitario: Optional[Decimal] = None
     quantidade_total_ofertada: Optional[Decimal] = None
 

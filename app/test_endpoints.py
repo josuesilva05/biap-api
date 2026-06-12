@@ -451,11 +451,15 @@ def main():
     assert all("quantidade_saldo_disponivel" in i for i in itens_fornecedor)
     ok("Campo 'quantidade_saldo_disponivel' presente em todos os itens ✔")
 
-    # 4.2 Fornecedor atualiza marca/modelo (campo permitido)
+    # 4.2 Fornecedor atualiza marca/modelo e url_imagem (campos permitidos)
     _, r = req(f"{BASE_URL}/items/{ITEM_NOTEBOOK}", "PUT", token=acme_token,
-               data={"marca_modelo": "Lenovo ThinkPad L15 Gen 5 (2026)"}, expected=200)
+               data={
+                   "marca_modelo": "Lenovo ThinkPad L15 Gen 5 (2026)",
+                   "url_imagem": "https://exemplo.com/imagem.png"
+               }, expected=200)
     assert r["marca_modelo"] == "Lenovo ThinkPad L15 Gen 5 (2026)"
-    ok("Fornecedor atualizou marca/modelo ✔")
+    assert r["url_imagem"] == "https://exemplo.com/imagem.png"
+    ok("Fornecedor atualizou marca/modelo e url_imagem ✔")
 
     # 4.3 Fornecedor tenta alterar valor_unitario (campo proibido)
     req(f"{BASE_URL}/items/{ITEM_NOTEBOOK}", "PUT", token=acme_token,

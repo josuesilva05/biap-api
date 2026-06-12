@@ -106,6 +106,7 @@ class ItemAta(Base):
     descricao_especificacao = Column(Text, nullable=False)
     unidade_medida = Column(String(10))
     marca_modelo = Column(String(100))
+    url_imagem = Column(String(255), nullable=True)
     valor_unitario = Column(Numeric(15, 2), nullable=False)
     quantidade_total_ofertada = Column(Numeric(15, 4), nullable=False)
 

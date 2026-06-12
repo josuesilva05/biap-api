@@ -133,13 +133,13 @@ def update_item_ata(
     # 3. Extrair dados enviados no corpo da requisição
     update_data = item_update.model_dump(exclude_unset=True)
 
-    # Se for FORNECEDOR, validar que apenas marca_modelo está sendo atualizado
+    # Se for FORNECEDOR, validar que apenas marca_modelo e url_imagem estão sendo atualizados
     if is_fornecedor_dono:
-        other_fields = [k for k in update_data.keys() if k != "marca_modelo"]
+        other_fields = [k for k in update_data.keys() if k not in ["marca_modelo", "url_imagem"]]
         if other_fields:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Acesso negado: fornecedores só têm permissão para atualizar o campo 'marca_modelo'."
+                detail="Acesso negado: fornecedores só têm permissão para atualizar os campos 'marca_modelo' e 'url_imagem'."
             )
 
     # 4. Aplicar as alterações
