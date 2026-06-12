@@ -62,7 +62,11 @@ ALTER TABLE regra_limite_carona
 DROP TABLE IF EXISTS item_ata_participante CASCADE;
 DROP TABLE IF EXISTS grupo_lote_participante CASCADE;
 
--- 5. Marcar migration como aplicada
+-- 5. Adicionar coluna url_imagem à tabela item_ata
+ALTER TABLE item_ata
+    ADD COLUMN IF NOT EXISTS url_imagem VARCHAR(255);
+
+-- 6. Marcar migration como aplicada
 CREATE TABLE IF NOT EXISTS applied_migrations (
     filename VARCHAR(255) PRIMARY KEY,
     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

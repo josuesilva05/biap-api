@@ -143,6 +143,7 @@ CREATE TABLE "public".item_ata
     descricao_especificacao   TEXT                           NOT NULL,
     unidade_medida            VARCHAR(10),
     marca_modelo              VARCHAR(100),
+    url_imagem                VARCHAR(255),
     valor_unitario            DECIMAL(15, 2)                 NOT NULL,
     quantidade_total_ofertada DECIMAL(15, 4)                 NOT NULL,
 

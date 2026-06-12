@@ -89,6 +89,7 @@ class ItemAtaResponse(BaseModel):
     descricao_especificacao: str
     unidade_medida: Optional[str] = None
     marca_modelo: Optional[str] = None
+    url_imagem: Optional[str] = None
     valor_unitario: Decimal
     quantidade_total_ofertada: Decimal
     participantes: List[ItemAtaParticipanteResponse] = []
@@ -200,6 +201,7 @@ class ItemAtaCreateNested(BaseModel):
     descricao_especificacao: str
     unidade_medida: Optional[str] = None
     marca_modelo: Optional[str] = None
+    url_imagem: Optional[str] = None
     valor_unitario: Decimal
     quantidade_total_ofertada: Optional[Decimal] = None
     participantes: List[ItemAtaParticipanteCreateNested] = []
@@ -234,6 +236,7 @@ class ItemSearchResponse(BaseModel):
     descricao_especificacao: str
     unidade_medida: Optional[str] = None
     marca_modelo: Optional[str] = None
+    url_imagem: Optional[str] = None
     valor_unitario: Decimal
     
     # Balances
@@ -302,6 +305,7 @@ class ItemAtaUpdate(BaseModel):
     descricao_especificacao: Optional[str] = None
     unidade_medida: Optional[str] = None
     marca_modelo: Optional[str] = None
+    url_imagem: Optional[str] = None
     valor_unitario: Optional[Decimal] = None
     quantidade_total_ofertada: Optional[Decimal] = None
 
