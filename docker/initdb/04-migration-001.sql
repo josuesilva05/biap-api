@@ -62,3 +62,11 @@ ALTER TABLE regra_limite_carona
 DROP TABLE IF EXISTS item_ata_participante CASCADE;
 DROP TABLE IF EXISTS grupo_lote_participante CASCADE;
 
+-- 5. Marcar migration como aplicada
+CREATE TABLE IF NOT EXISTS applied_migrations (
+    filename VARCHAR(255) PRIMARY KEY,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO applied_migrations (filename) VALUES ('04-migration-001.sql') ON CONFLICT DO NOTHING;
+
+

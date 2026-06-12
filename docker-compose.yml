@@ -45,6 +45,12 @@ services:
       DATABASE_URL: ${DATABASE_URL}
     ports:
       - "${API_PORT}:8000"
+    volumes:
+      - ./docker/initdb:/code/docker/initdb:ro
+      - ./tests:/code/tests:ro
+    command: sh -c "python -m app.run_migrations && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     depends_on:
       postgres:
         condition: service_healthy
+
+
