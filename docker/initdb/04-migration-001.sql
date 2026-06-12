@@ -66,3 +66,11 @@ DROP TABLE IF EXISTS grupo_lote_participante CASCADE;
 ALTER TABLE item_ata
     ADD COLUMN IF NOT EXISTS url_imagem VARCHAR(255);
 
+-- 6. Marcar migration como aplicada
+CREATE TABLE IF NOT EXISTS applied_migrations (
+    filename VARCHAR(255) PRIMARY KEY,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO applied_migrations (filename) VALUES ('04-migration-001.sql') ON CONFLICT DO NOTHING;
+
+

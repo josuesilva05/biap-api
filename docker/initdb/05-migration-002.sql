@@ -31,3 +31,11 @@ ON CONFLICT (item_ata_id, orgao_id) DO NOTHING;
 ALTER TABLE "public".grupo_lote
     DROP COLUMN IF EXISTS orgao_id,
     DROP COLUMN IF EXISTS quantidade_planejada;
+
+-- 4. Marcar migration como aplicada
+CREATE TABLE IF NOT EXISTS applied_migrations (
+    filename VARCHAR(255) PRIMARY KEY,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO applied_migrations (filename) VALUES ('05-migration-002.sql') ON CONFLICT DO NOTHING;
+
